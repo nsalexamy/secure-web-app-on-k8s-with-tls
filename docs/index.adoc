@@ -4,9 +4,9 @@
 
 :sourcedir: ..
 
-ifdef::github[]
+ifdef::env-github[]
 :sourcedir: https://raw.githubusercontent.com/nsalexamy/secure-web-app-on-k8s-with-tls/refs/heads/main
-endif::github[]
+endif::[]
 
 == Introduction
 
