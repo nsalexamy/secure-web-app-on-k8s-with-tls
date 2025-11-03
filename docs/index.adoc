@@ -4,6 +4,10 @@
 
 :sourcedir: ..
 
+ifdef::github[]
+:sourcedir: https://raw.githubusercontent.com/nsalexamy/secure-web-app-on-k8s-with-tls/refs/heads/main
+endif::github[]
+
 == Introduction
 
 In this guide, we will walk you through the process of securing your web applications running on a Kubernetes cluster using TLS (Transport Layer Security) with certificates issued by Let’s Encrypt. By following these steps, you will ensure that your applications communicate securely over HTTPS.
