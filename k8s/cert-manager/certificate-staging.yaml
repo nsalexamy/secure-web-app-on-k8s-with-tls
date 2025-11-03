@@ -1,0 +1,14 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: certificate-staging
+  namespace: staging
+spec:
+  secretName: staging-ca-tls
+  issuerRef:
+    name: cluster-issuer-letsencrypt-http
+    kind: ClusterIssuer
+  commonName: servicefoundry.ca
+  dnsNames:
+    - servicefoundry.ca
+    - staging.servicefoundry.ca

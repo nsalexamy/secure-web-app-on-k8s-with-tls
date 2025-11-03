@@ -8,39 +8,45 @@ ifdef::env-github[]
 :sourcedir: https://raw.githubusercontent.com/nsalexamy/secure-web-app-on-k8s-with-tls/refs/heads/main
 endif::[]
 
+image::intro.png[]
+
 == Introduction
 
-In this guide, we will walk you through the process of securing your web applications running on a Kubernetes cluster using TLS (Transport Layer Security) with certificates issued by Let’s Encrypt. By following these steps, you will ensure that your applications communicate securely over HTTPS.
+This guide walks you through the process of securing web applications running on Kubernetes using TLS certificates issued by Let’s Encrypt. With these steps, your apps will communicate securely over HTTPS.
 
-* Develop sample web applications deployed on Kubernetes
-* Install Traefik Ingress Controller with LoadBalancer
-* Register a domain name and configure DNS records using the IP address of the LoadBalancer
-* Install cert-manager in your Kubernetes cluster
-* Create a ClusterIssuer for Let’s Encrypt
-* Issue a TLS certificate for your domain and subdomains
-* Test HTTPS access to your web applications
+Here’s what we’ll cover:
+
+•	Deploying sample web applications on Kubernetes
+•	Installing the Traefik Ingress Controller with a LoadBalancer
+•	Registering a domain name and configuring DNS records for the LoadBalancer
+•	Installing cert-manager on your Kubernetes cluster
+•	Creating a ClusterIssuer to use Let’s Encrypt
+•	Issuing TLS certificates for your domains
+•	Testing HTTPS access to your applications
 
 == Prerequisites
 
-Before you begin, ensure you have the following prerequisites in place:
+Before you begin, make sure you have the following in place:
 
-* Domain name that you own or control
-* DNS records correctly configured to point to your Kubernetes cluster's ingress controller
-* A running Kubernetes cluster with access to deploy resources
+•	A domain name you control
+•	DNS records pointing to your Kubernetes ingress controller
+•	A running Kubernetes cluster with access to deploy workloads
 
-In this document, we will use 'Go Daddy' as the DNS provider for demonstration purposes. Adjust the DNS configuration steps according to your DNS provider if necessary.
-
-And domain name is servicefoundry.ca for example.
+For this demo, we’ll use servicefoundry.ca as the example domain and GoDaddy as the DNS provider. Adjust the steps if you’re using a different provider.
 
 
-== Sample Web applications Overview
+== Sample Applications Overview
 
-* dev.servicefoundry.ca - Development environment
-* staging.servicefoundry.ca - Staging environment
+We’ll deploy two simple applications for demonstration:
+
+•	dev.servicefoundry.ca – Development environment
+•	staging.servicefoundry.ca – Staging environment
+
+Each app will serve a basic custom HTML page.
 
 
 
-=== Custom index.html for Each App
+=== index.html Files
 
 Staging - staging/index.html
 [source,html]
@@ -70,30 +76,42 @@ Dev - dev/index.html
 </html>
 ----
 
-=== Kustomization Files
+== Project Structure
 
-==== File Structure
-
-Files used in this guide are organized as follows:
+All Kubernetes resources are organized into a directory structure like this:
 
 [source,plain]
 ----
 k8s
 ├── base
+│   ├── configmap.yaml
 │   ├── deployment.yaml
 │   ├── kustomization.yaml
 │   ├── namespace.yaml
 │   └── service.yaml
-└── overlays
-    ├── dev
-    │   ├── configmap.yaml
-    │   └── kustomization.yaml
-    └── staging
-        ├── configmap.yaml
-        └── kustomization.yaml
+├── cert-manager
+│   ├── certificate-dev.yaml
+│   ├── certificate-staging.yaml
+│   ├── cluster-issuer-letsencrypt-http.yaml
+│   └── custom-values.yaml
+├── overlays
+│   ├── dev
+│   │   ├── configmap.yaml
+│   │   ├── index.html
+│   │   └── kustomization.yaml
+│   └── staging
+│       ├── configmap.yaml
+│       ├── index.html
+│       └── kustomization.yaml
+└── traefik
+    ├── custom-values.yaml
+    ├── ingressroute-dev.yaml
+    └── ingressroute-staging.yaml
+
 
 ----
-==== Base Namespace, ConfigMap, Deployment, and Service
+
+=== Base Namespace, ConfigMap, Deployment, and Service
 
 .k8s/base/namespace.yaml
 [source,yaml]
@@ -125,7 +143,7 @@ include::{sourcedir}/k8s/base/configmap.yaml[]
 include::{sourcedir}/k8s/base/kustomization.yaml[]
 ----
 
-==== Overlays for Dev
+=== Overlays for Dev
 
 .k8s/overlays/dev/configmap.yaml
 [source,yaml]
@@ -139,7 +157,7 @@ include::{sourcedir}/k8s/overlays/dev/configmap.yaml[]
 include::{sourcedir}/k8s/overlays/dev/kustomization.yaml[]
 ----
 
-==== Overlays for Staging
+=== Overlays for Staging
 
 .k8s/overlays/staging/configmap.yaml
 [source,yaml]
@@ -154,36 +172,332 @@ include::{sourcedir}/k8s/overlays/staging/kustomization.yaml[]
 ----
 
 
-=== Deploy Sample Web Applications
+== Deploy the Applications
 
-Deploy the development environment:
+Use kubectl to deploy each environment:
+
 [source,shell]
 ----
 $ kubectl apply -k k8s/overlays/dev
-----
-
-Deploy the staging environment:
-[source,shell]
-----
 $ kubectl apply -k k8s/overlays/staging
 ----
 
-=== Test Sample Web Applications using Port Forwarding
+To test locally, you can port-forward each service:
 
-Test the development environment:
 [source,shell]
 ----
 $ kubectl port-forward svc/dev-web-service -n dev 18080:80
-----
-Access http://localhost:8080 in your web browser to see the development page.
-Test the staging environment:
-[source,shell]
-----
 $ kubectl port-forward svc/staging-web-service -n staging 28080:80
 ----
 
+Then access them via your browser at http://localhost:18080 and http://localhost:28080.
+
 == Install Traefik Ingress Controller
 
-Now that we have our sample web applications deployed, we will install the Traefik Ingress Controller to manage incoming traffic and route it to the appropriate services.
+Here is a custom values.yaml file for Traefik:
+
+.k8s/traefik/custom-values.yaml
+[source,yaml]
+----
+include::{sourcedir}/k8s/traefik/custom-values.yaml[]
+----
+
+Install Traefik using Helm and your custom values.yaml file:
+
+[source,shell]
+----
+$ helm repo add traefik https://helm.traefik.io/traefik
+$ helm repo update traefik
+
+$ helm install traefik traefik/traefik --namespace traefik --create-namespace -f k8s/traefik/custom-values.yaml
+----
+
+== Configure DNS Records
+
+Retrieve the external IP of the Traefik LoadBalancer:
+
+[source,shell]
+----
+$ kubectl get svc traefik -n traefik
+----
+
+Then configure your domain and subdomains (e.g., dev.servicefoundry.ca) in your DNS provider to point to that IP.
+
+Refer to the screenshots for GoDaddy root and subdomain configurations.
+
+Here's an example DNS record:
+----
+Type: A
+Name: @
+Value: <IP_ADDRESS_OF_YOUR_LOAD_BALANCER>
+TTL: 1 Hour
+----
+
+.Root Domain Configuration Example
+image::go-daddy-root-domain.png[]
+
+Here is an example DNS record for a subdomain:
+
+.Subdomain Configuration Example
+image::go-daddy-add-dns-records.png[]
+
+== Add IngressRoute Resources
+
+Create and apply IngressRoute resources for both dev and staging apps:
+
+.k8s/traefik/ingressroute-dev.yaml
+[source,yaml]
+----
+include::{sourcedir}/k8s/traefik/ingressroute-dev.yaml[]
+----
+
+.k8s/traefik/ingressroute-staging.yaml
+[source,yaml]
+----
+include::{sourcedir}/k8s/traefik/ingressroute-staging.yaml[]
+----
+
+Apply the IngressRoute resources:
+[source,shell]
+----
+$ kubectl apply -f k8s/traefik/ingressroute-dev.yaml
+$ kubectl apply -f k8s/traefik/ingressroute-staging
+----
+
+Now you can access the applications via HTTP:
+
+* http://dev.servicefoundry.ca
+* http://staging.servicefoundry.ca
+
+.Dev Index Page
+image::dev-http.png[]
+
+== Install cert-manager
+
+To manage TLS certificates, we will install cert-manager in our Kubernetes cluster.
+
+.k8s/cert-manager/custom-values.yaml
+[source,yaml]
+----
+include::{sourcedir}/k8s/cert-manager/custom-values.yaml[]
+----
+
+Install cert-manager using Helm:
+
+[source,shell]
+----
+$ helm repo add jetstack https://charts.jetstack.io
+$ helm repo update jetstack
+
+$ helm install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace -f k8s/cert-manager/custom-values.yaml
+----
+
+
+== Understanding Let’s Encrypt and ACME
+
+Let’s Encrypt is a free, automated certificate authority. It uses the ACME protocol to issue and manage certificates without manual steps.
+
+We’ll use cert-manager with the HTTP-01 ACME challenge to automatically generate certificates for our domains.
+
+
+== Create ClusterIssuer
+
+Define a ClusterIssuer resource for Let’s Encrypt:
+
+.k8s/cert-manager/cluster-issuer-letsencrypt-http.yaml
+[source,yaml]
+----
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: cluster-issuer-letsencrypt-http
+  namespace: cert-manager
+spec:
+  acme:
+    # Your contact email (used for renewal notices)
+    email: your-email
+
+    # Let’s Encrypt production server
+    # For testing, use: https://acme-staging-v02.api.letsencrypt.org/directory
+    server: https://acme-v02.api.letsencrypt.org/directory
+
+    # Secret where the ACME account private key is stored
+    privateKeySecretRef:
+      name: letsencrypt-http-key
+
+    # Use HTTP-01 challenge via Traefik ingress
+    solvers:
+      - http01:
+          ingress:
+            class: traefik
+
+----
+
+// === Detailed workflow of HTTP-01 Challenge
+//
+// 1. The client (cert-manager) requests a certificate from Let's Encrypt for a specific domain.
+// 2. Let's Encrypt responds with a challenge that requires the client to prove control over the domain.
+// 3. The client creates a temporary HTTP resource (a challenge file) on the domain's web server.
+// 4. Let's Encrypt attempts to access the challenge file via HTTP on the domain.
+// 5. If Let's Encrypt can successfully retrieve the challenge file, it verifies that the client controls the domain.
+// 6. Upon successful verification, Let's Encrypt issues the requested TLS certificate to the client.
+
+Apply it:
+
+[source,shell]
+----
+$ kubectl apply -f k8s/cert-manager/cluster-issuer-letsencrypt-http.yaml
+----
+
+This creates a TLS private key in the letsencrypt-http-key secret in the cert-manager namespace.
+
+[source,shell]
+----
+$ kubectl -n cert-manager get secret/letsencrypt-http-key -o yaml
+----
+Output:
+[source,yaml]
+----
+apiVersion: v1
+data:
+  tls.key: <base64-encoded-private-key>
+kind: Secret
+metadata:
+  name: letsencrypt-http-key
+  namespace: cert-manager
+----
+
+== Request TLS Certificates
+
+Create a Certificate resource to request a TLS certificate for your domain.
+
+Since the certificates are saved as secrets in the same namespace as the IngressRoute, we will create the Certificate resources in the `dev` and `staging` namespaces.
+
+.k8s/cert-manager/certificate-dev.yaml
+[source,yaml]
+----
+include::{sourcedir}/k8s/cert-manager/certificate-dev.yaml[]
+----
+
+.k8s/cert-manager/certificate-staging.yaml
+[source,yaml]
+----
+include::{sourcedir}/k8s/cert-manager/certificate-staging.yaml[]
+----
+
+Apply the Certificate resources:
+[source,shell]
+----
+$ kubectl apply -f k8s/cert-manager/certificate-dev.yaml
+$ kubectl apply -f k8s/cert-manager/certificate-staging.yaml
+----
+
+cert-manager will handle the HTTP-01 challenge via Traefik, validate the domain, and store the issued certificate in a Kubernetes secret.
+
+// [source,shell]
+// ----
+// $ kubectl -n dev get pods
+// NAME                           READY   STATUS    RESTARTS   AGE
+// cm-acme-http-solver-6ngfm      1/1     Running   0          4s
+// cm-acme-http-solver-mqnnb      1/1     Running   0          4s
+// dev-web-app-568cc45855-5fpqg   1/1     Running   0          3h9m
+// ----
+//
+// After the certificate is issued, it is stored in the secrets `dev-ca-tls` in the `dev` namespace.
+
+[source,shell]
+----
+$ kubectl -n dev get secret/dev-ca-tls -o yaml
+----
+
+Output:
+[source,yaml]
+----
+data:
+  tls.crt: <base64-encoded-certificate>
+  tls.key: <base64-encoded-private-key>
+----
+
+== Enable HTTPS in IngressRoute
+
+Update each IngressRoute to reference the TLS secret:
+
+.k8s/traefik/ingressroute-dev.yaml
+[source,yaml]
+----
+
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: dev-ingress-route
+  namespace: dev
+spec:
+  entryPoints:
+    - web
+    - websecure
+
+  routes:
+    - match: Host(`dev.servicefoundry.ca`) && PathPrefix(`/`)
+      kind: Rule
+      services:
+        - name: dev-web-service
+          port: 80
+
+  # <1> Reference the TLS secret for the certificate
+  tls:
+    secretName: "dev-ca-tls"
+----
+
+Apply the updated IngressRoute resources:
+[source,shell]
+----
+$ kubectl apply -f k8s/traefik/ingressroute-dev.yaml
+----
+
+Update the staging IngressRoute similarly to reference the `staging-ca-tls` secret.
+
+Now HTTPS is enabled for both development and staging environments.
+
+Access
+
+* https://dev.servicefoundry.ca
+* https://staging.servicefoundry.ca
+
+.Dev HTTPS Page
+image::dev-https.png[]
+
+
+== Cloud-Agnostic Considerations
+
+This solution works on any Kubernetes cluster regardless of the cloud provider.
+
+If you’re on AWS and using Route 53, you can optionally use AWS Certificate Manager (ACM) instead of Let’s Encrypt. In that case, cert-manager would reference the ACM certificate, and you’d leave the secretName field blank in your IngressRoute.
+
+.k8s/traefik/ingressroute-aws-acm.yaml
+----
+# other fields remain the same
+  tls:
+    secretName: ""
+----
+
+
+
+== Conclusion
+
+We’ve successfully secured our web applications on Kubernetes using Let’s Encrypt and Traefik. This setup ensures secure HTTPS communication for your services, improves trust, and supports compliance for modern web applications.
+
+
+== Resources
+
+=== GitHub Repository
+
+https://github.com/nsalexamy/secure-web-app-on-k8s-with-tls
+
+=== Additional Reading
+
+* cert-manager Documentation: https://cert-manager.io/docs/
+* Traefik Documentation: https://doc.traefik.io/traefik/
+* Let’s Encrypt Documentation: https://letsencrypt.org/docs/
+* ACME Protocol Overview: https://tools.ietf.org/html/rfc8555
 
 
