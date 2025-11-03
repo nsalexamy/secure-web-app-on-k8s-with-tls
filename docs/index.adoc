@@ -1,0 +1,185 @@
+= Securing Web Applications on Kubernetes with TLS and Let’s Encrypt
+
+:imagesdir: images
+
+:sourcedir: ..
+
+== Introduction
+
+In this guide, we will walk you through the process of securing your web applications running on a Kubernetes cluster using TLS (Transport Layer Security) with certificates issued by Let’s Encrypt. By following these steps, you will ensure that your applications communicate securely over HTTPS.
+
+* Develop sample web applications deployed on Kubernetes
+* Install Traefik Ingress Controller with LoadBalancer
+* Register a domain name and configure DNS records using the IP address of the LoadBalancer
+* Install cert-manager in your Kubernetes cluster
+* Create a ClusterIssuer for Let’s Encrypt
+* Issue a TLS certificate for your domain and subdomains
+* Test HTTPS access to your web applications
+
+== Prerequisites
+
+Before you begin, ensure you have the following prerequisites in place:
+
+* Domain name that you own or control
+* DNS records correctly configured to point to your Kubernetes cluster's ingress controller
+* A running Kubernetes cluster with access to deploy resources
+
+In this document, we will use 'Go Daddy' as the DNS provider for demonstration purposes. Adjust the DNS configuration steps according to your DNS provider if necessary.
+
+And domain name is servicefoundry.ca for example.
+
+
+== Sample Web applications Overview
+
+* dev.servicefoundry.ca - Development environment
+* staging.servicefoundry.ca - Staging environment
+
+
+
+=== Custom index.html for Each App
+
+Staging - staging/index.html
+[source,html]
+----
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Staging</title>
+</head>
+<body>
+    <h1>Staging Page</h1>
+</body>
+</html>
+----
+
+Dev - dev/index.html
+[source,html]
+----
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Development</title>
+</head>
+<body>
+    <h1>Development Page</h1>
+</body>
+</html>
+----
+
+=== Kustomization Files
+
+==== File Structure
+
+Files used in this guide are organized as follows:
+
+[source,plain]
+----
+k8s
+├── base
+│   ├── deployment.yaml
+│   ├── kustomization.yaml
+│   ├── namespace.yaml
+│   └── service.yaml
+└── overlays
+    ├── dev
+    │   ├── configmap.yaml
+    │   └── kustomization.yaml
+    └── staging
+        ├── configmap.yaml
+        └── kustomization.yaml
+
+----
+==== Base Namespace, ConfigMap, Deployment, and Service
+
+.k8s/base/namespace.yaml
+[source,yaml]
+----
+include::{sourcedir}/k8s/base/namespace.yaml[]
+----
+
+.k8s/base/deployment.yaml
+[source,yaml]
+----
+include::{sourcedir}/k8s/base/deployment.yaml[]
+----
+
+.k8s/base/service.yaml
+[source,yaml]
+----
+include::{sourcedir}/k8s/base/service.yaml[]
+----
+
+.k8s/base/configmap.yaml
+[source,yaml]
+----
+include::{sourcedir}/k8s/base/configmap.yaml[]
+----
+
+.k8s/base/kustomization.yaml
+[source,yaml]
+----
+include::{sourcedir}/k8s/base/kustomization.yaml[]
+----
+
+==== Overlays for Dev
+
+.k8s/overlays/dev/configmap.yaml
+[source,yaml]
+----
+include::{sourcedir}/k8s/overlays/dev/configmap.yaml[]
+----
+
+.k8s/overlays/dev/kustomization.yaml
+[source,yaml]
+----
+include::{sourcedir}/k8s/overlays/dev/kustomization.yaml[]
+----
+
+==== Overlays for Staging
+
+.k8s/overlays/staging/configmap.yaml
+[source,yaml]
+----
+include::{sourcedir}/k8s/overlays/staging/configmap.yaml[]
+----
+
+.k8s/overlays/staging/kustomization.yaml
+[source,yaml]
+----
+include::{sourcedir}/k8s/overlays/staging/kustomization.yaml[]
+----
+
+
+=== Deploy Sample Web Applications
+
+Deploy the development environment:
+[source,shell]
+----
+$ kubectl apply -k k8s/overlays/dev
+----
+
+Deploy the staging environment:
+[source,shell]
+----
+$ kubectl apply -k k8s/overlays/staging
+----
+
+=== Test Sample Web Applications using Port Forwarding
+
+Test the development environment:
+[source,shell]
+----
+$ kubectl port-forward svc/dev-web-service -n dev 18080:80
+----
+Access http://localhost:8080 in your web browser to see the development page.
+Test the staging environment:
+[source,shell]
+----
+$ kubectl port-forward svc/staging-web-service -n staging 28080:80
+----
+
+== Install Traefik Ingress Controller
+
+Now that we have our sample web applications deployed, we will install the Traefik Ingress Controller to manage incoming traffic and route it to the appropriate services.
+
+

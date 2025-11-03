@@ -1,0 +1,8 @@
+ingressRoute:
+  dashboard:
+    # -- Create an IngressRoute for the dashboard
+    enabled: true
+
+env:
+  - name: USER
+    value: "traefik"
