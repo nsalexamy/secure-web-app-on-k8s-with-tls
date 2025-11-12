@@ -24,6 +24,11 @@ Here’s what we’ll cover:
 •	Issuing TLS certificates for your domains
 •	Testing HTTPS access to your applications
 
+=== YouTube Video
+
+https://youtu.be/d99zP14n_xg
+
+
 == Prerequisites
 
 Before you begin, make sure you have the following in place:
